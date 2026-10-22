@@ -1,4 +1,5 @@
 use crate::{client::Client, render, Crate, Tool, Version};
+use chrono::TimeDelta;
 use clap::Parser;
 use color_eyre::eyre::Result;
 use once_cell::sync::Lazy;
@@ -116,11 +117,11 @@ pub async fn run(args: Args) -> Result<()> {
     color_eyre::eyre::ensure!(status.success(), "docker image build failed!");
 
     log::info!("Figuring out what crates have a build log already");
-    let client = Arc::new(Client::new(args.tool, &args.bucket).await?);
+    let client = Arc::new(Client::new_aws(args.tool, &args.bucket).await?);
     let mut crates = build_crate_list(&args, &client).await?;
     if !args.rerun {
         let finished_crates = client
-            .list_finished_crates(Some(time::Duration::days(30)))
+            .list_finished_crates(Some(TimeDelta::days(30)))
             .await?;
         crates.retain(|krate| {
             !finished_crates
