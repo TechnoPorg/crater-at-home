@@ -1,4 +1,4 @@
-use crate::{client::Client, render, Crate, Tool, Version};
+use crate::{client::Client, render, Crate, Store, Tool, Version};
 use chrono::TimeDelta;
 use clap::Parser;
 use color_eyre::eyre::Result;
@@ -45,8 +45,8 @@ pub struct Args {
     #[clap(long)]
     pub tool: Tool,
 
-    #[clap(long)]
-    pub bucket: String,
+    #[clap(flatten)]
+    store: Store,
 
     #[clap(long)]
     jobs: Option<usize>,
@@ -117,7 +117,7 @@ pub async fn run(args: Args) -> Result<()> {
     color_eyre::eyre::ensure!(status.success(), "docker image build failed!");
 
     log::info!("Figuring out what crates have a build log already");
-    let client = Arc::new(Client::new_aws(args.tool, &args.bucket).await?);
+    let client = Arc::new(Client::new(args.tool, &args.store).await?);
     let mut crates = build_crate_list(&args, &client).await?;
     if !args.rerun {
         let finished_crates = client

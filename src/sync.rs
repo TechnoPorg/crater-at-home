@@ -1,5 +1,5 @@
-use crate::Version;
 use crate::{client::Client, db_dump, render, Crate, Tool};
+use crate::{Store, Version};
 use chrono::Utc;
 use clap::Parser;
 use color_eyre::{Report, Result};
@@ -12,13 +12,13 @@ pub struct Args {
     #[clap(long)]
     tool: Tool,
 
-    #[clap(long)]
-    bucket: String,
+    #[clap(flatten)]
+    store: Store,
 }
 
 #[tokio::main]
 pub async fn run(args: Args) -> Result<()> {
-    let client = Arc::new(Client::new_aws(args.tool, &args.bucket).await?);
+    let client = Arc::new(Client::new(args.tool, &args.store).await?);
 
     log::info!("Rendering fresh landing page");
     sync_landing_page(&client).await?;

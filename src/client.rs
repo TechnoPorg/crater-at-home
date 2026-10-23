@@ -1,3 +1,4 @@
+use crate::Store;
 use crate::{Crate, Status, Tool, Version};
 use backoff::Error;
 use backoff::ExponentialBackoff;
@@ -7,12 +8,14 @@ use color_eyre::Result;
 use futures_util::StreamExt;
 use futures_util::TryFutureExt;
 use object_store::aws::AmazonS3Builder;
+use object_store::local::LocalFileSystem;
 use object_store::path::Path;
 use object_store::ObjectMeta;
 use object_store::ObjectStore;
 use object_store::ObjectStoreExt;
 use object_store::WriteMultipart;
 use std::collections::HashMap;
+use std::fs;
 use std::future::Future;
 
 pub struct Client {
@@ -21,12 +24,18 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn new_aws(tool: Tool, bucket: &str) -> Result<Self> {
-        let inner = Box::new(
-            AmazonS3Builder::from_env()
-                .with_bucket_name(bucket)
-                .build()?,
-        );
+    pub async fn new(tool: Tool, store: &Store) -> Result<Self> {
+        let inner: Box<dyn ObjectStore> = if let Some(bucket) = &store.bucket {
+            Box::new(
+                AmazonS3Builder::from_env()
+                    .with_bucket_name(bucket)
+                    .build()?,
+            )
+        } else {
+            let storage_dir = store.storage_dir.as_ref().expect("validated by clap");
+            fs::create_dir_all(storage_dir)?;
+            Box::new(LocalFileSystem::new_with_prefix(storage_dir)?)
+        };
         Ok(Self { inner, tool })
     }
 
@@ -107,7 +116,12 @@ impl Client {
                     continue;
                 }
             }
-            if let Some(key) = obj.location.as_ref().strip_prefix(prefix.as_ref()) {
+            if let Some(key) = obj
+                .location
+                .as_ref()
+                .strip_prefix(prefix.as_ref())
+                .map(|location| location.trim_start_matches('/'))
+            {
                 let mut it = key.split('/');
                 let Some(name) = it.next() else {
                     continue;
@@ -132,7 +146,12 @@ impl Client {
         let mut files = Vec::new();
         while let Some(res) = res.next().await {
             let obj = res?;
-            if let Some(key) = obj.location.as_ref().strip_prefix(prefix.as_ref()) {
+            if let Some(key) = obj
+                .location
+                .as_ref()
+                .strip_prefix(prefix.as_ref())
+                .map(|key| key.trim_start_matches('/'))
+            {
                 files.push(key.to_string());
             }
         }
